@@ -66,7 +66,7 @@ log "Git:            $(git --version)"
 # -----------------------------------------------------------------------------
 header "Cloning Agent Playground Repo"
 
-REPO_DIR="$HOME/agent-playground"
+REPO_DIR="$HOME/projects/agent-playground"
 
 if [ -d "$REPO_DIR" ]; then
     warn "Directory $REPO_DIR already exists — skipping clone."
