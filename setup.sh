@@ -78,6 +78,17 @@ if [ ! -d "$HOME/.claude" ]; then
 Please run 'claude' on this VM first and log in with your Pro account."
 fi
 
+# Restore .claude.json from backup if missing
+if [ ! -f "$HOME/.claude.json" ]; then
+    BACKUP=$(ls -t "$HOME/.claude/backups/.claude.json.backup."* 2>/dev/null | head -1)
+    if [ -n "$BACKUP" ]; then
+        cp "$BACKUP" "$HOME/.claude.json"
+        log "Restored .claude.json from backup."
+    else
+        warn ".claude.json not found and no backup available. You may need to log in again with 'claude'."
+    fi
+fi
+
 log "Claude Code credentials found at ~/.claude"
 
 # -----------------------------------------------------------------------------
@@ -208,12 +219,13 @@ You never write code yourself — you only delegate and coordinate.
 - If QC fails, reassign to original agent with test failure details
 - Never modify files in /proj/ directly
 - Never push directly to main or dev
+- Always wait for user approval before assigning any work
 
 ## Ticket Format
 Create tickets as /agents/workspace/tickets/ticket_XXX.md
 
 ## Workflow
-Requirements → Tickets → Assign → Review → QC → Done
+Requirements → Plan → Show user → Wait for approval → Assign → Review → QC → Done
 
 ## Git Rules
 - Ensure all agents branch from dev
@@ -237,6 +249,7 @@ databases, APIs, and server-side logic.
 
 ## Stack
 - Python / FastAPI
+- Jinja2 templates
 - PostgreSQL
 - SQLAlchemy ORM
 
@@ -271,9 +284,9 @@ UI components, styling, and user experience.
 - Never push directly to main or dev
 
 ## Stack
-- React
-- TypeScript
+- HTMX
 - Tailwind CSS
+- Jinja2 templates
 
 ## Git Rules
 - Always pull latest dev before starting
@@ -368,7 +381,6 @@ before users do. You are the final gatekeeper before done.
 
 ## Tools
 - pytest for Python backend
-- Jest for frontend components
 - Test API endpoints directly with curl or httpx
 - Verify database state where relevant
 
@@ -380,7 +392,7 @@ EOF
 log "All CLAUDE.md files written."
 
 # -----------------------------------------------------------------------------
-# Write Dockerfiles
+# Write Dockerfiles — non-root user for Claude Code compatibility
 # -----------------------------------------------------------------------------
 header "Writing Dockerfiles"
 
@@ -398,12 +410,18 @@ RUN apt-get update && apt-get install -y \
 
 RUN npm install -g @anthropic-ai/claude-code
 
+# Create non-root user — required for Claude Code --dangerously-skip-permissions
+RUN useradd -m -s /bin/bash agent
+
 RUN git config --global credential.helper store
 RUN git config --global init.defaultBranch main
 
-WORKDIR /agent
+WORKDIR /home/agent
 
-COPY CLAUDE.md /agent/CLAUDE.md
+COPY CLAUDE.md /home/agent/CLAUDE.md
+RUN chown -R agent:agent /home/agent
+
+USER agent
 
 CMD ["claude", "--dangerously-skip-permissions"]
 EOF
@@ -424,6 +442,7 @@ log "Dockerfiles written for all agents."
 header "Writing docker-compose.yml"
 
 CLAUDE_DIR="$HOME/.claude"
+CLAUDE_JSON="$HOME/.claude.json"
 
 cat > docker-compose.yml <<EOF
 version: '3.8'
@@ -439,10 +458,11 @@ services:
   orchestrator:
     build: ./agents/orchestrator
     volumes:
-      - ./proj:/proj
-      - ./agents/workspace:/agents/workspace
-      - ./agents/shared:/agents/shared
-      - ${CLAUDE_DIR}:/root/.claude:ro
+      - ./proj:/home/agent/proj
+      - ./agents/workspace:/home/agent/agents/workspace
+      - ./agents/shared:/home/agent/agents/shared
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -458,10 +478,11 @@ services:
   backend_dev:
     build: ./agents/backend_dev
     volumes:
-      - ./proj:/proj
-      - ./agents/workspace:/agents/workspace
-      - ./agents/shared:/agents/shared
-      - ${CLAUDE_DIR}:/root/.claude:ro
+      - ./proj:/home/agent/proj
+      - ./agents/workspace:/home/agent/agents/workspace
+      - ./agents/shared:/home/agent/agents/shared
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -479,10 +500,11 @@ services:
   frontend_dev:
     build: ./agents/frontend_dev
     volumes:
-      - ./proj:/proj
-      - ./agents/workspace:/agents/workspace
-      - ./agents/shared:/agents/shared
-      - ${CLAUDE_DIR}:/root/.claude:ro
+      - ./proj:/home/agent/proj
+      - ./agents/workspace:/home/agent/agents/workspace
+      - ./agents/shared:/home/agent/agents/shared
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -500,10 +522,11 @@ services:
   infrastructure:
     build: ./agents/infrastructure
     volumes:
-      - ./proj:/proj
-      - ./agents/workspace:/agents/workspace
-      - ./agents/shared:/agents/shared
-      - ${CLAUDE_DIR}:/root/.claude:ro
+      - ./proj:/home/agent/proj
+      - ./agents/workspace:/home/agent/agents/workspace
+      - ./agents/shared:/home/agent/agents/shared
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -521,10 +544,11 @@ services:
   reviewer:
     build: ./agents/reviewer
     volumes:
-      - ./proj:/proj
-      - ./agents/workspace:/agents/workspace
-      - ./agents/shared:/agents/shared
-      - ${CLAUDE_DIR}:/root/.claude:ro
+      - ./proj:/home/agent/proj
+      - ./agents/workspace:/home/agent/agents/workspace
+      - ./agents/shared:/home/agent/agents/shared
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -542,10 +566,11 @@ services:
   qc_tester:
     build: ./agents/qc_tester
     volumes:
-      - ./proj:/proj
-      - ./agents/workspace:/agents/workspace
-      - ./agents/shared:/agents/shared
-      - ${CLAUDE_DIR}:/root/.claude:ro
+      - ./proj:/home/agent/proj
+      - ./agents/workspace:/home/agent/agents/workspace
+      - ./agents/shared:/home/agent/agents/shared
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -611,19 +636,19 @@ echo ""
 echo "Project: $REPO_DIR"
 echo ""
 echo "Structure:"
-echo "  proj/src/backend/      ← backend source code"
-echo "  proj/src/frontend/     ← frontend source code"
+echo "  proj/src/backend/        ← backend source code"
+echo "  proj/src/frontend/       ← frontend source code"
 echo "  proj/src/infrastructure/ ← infrastructure config"
-echo "  proj/src/tests/        ← test suites"
-echo "  proj/assets/           ← static assets"
-echo "  proj/dist/             ← build output (gitignored)"
-echo "  proj/docs/             ← documentation"
-echo "  agents/workspace/      ← tickets, reviews, test results"
+echo "  proj/src/tests/          ← test suites"
+echo "  proj/assets/             ← static assets"
+echo "  proj/dist/               ← build output (gitignored)"
+echo "  proj/docs/               ← documentation"
+echo "  agents/workspace/        ← tickets, reviews, test results"
 echo ""
-echo "Useful commands (from $REPO_DIR):"
-echo "  Start orchestrator:  docker compose run --rm orchestrator"
-echo "  Start all agents:    docker compose up"
-echo "  Check tickets:       ls agents/workspace/tickets/"
-echo "  Check status:        cat agents/workspace/status.json"
-echo "  Stop everything:     docker compose down"
+echo "Next steps:"
+echo "  1. Create your project brief:"
+echo "     nano agents/workspace/project_brief.md"
+echo "  2. Start the orchestrator:"
+echo "     cd $REPO_DIR && docker compose run --rm orchestrator"
+echo "  3. Tell it: Read /home/agent/agents/workspace/project_brief.md"
 echo ""
