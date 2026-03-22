@@ -683,6 +683,9 @@ docker compose build
 
 log "Docker images built."
 
+# Ensure the agent user (uid=1001) inside containers can write to the project
+chmod -R 777 "$REPO_DIR"
+
 # -----------------------------------------------------------------------------
 # Done
 # -----------------------------------------------------------------------------
