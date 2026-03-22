@@ -469,8 +469,8 @@ services:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude
-      - ${CLAUDE_JSON}:/home/agent/.claude.json
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -490,8 +490,8 @@ services:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude
-      - ${CLAUDE_JSON}:/home/agent/.claude.json
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -513,8 +513,8 @@ services:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude
-      - ${CLAUDE_JSON}:/home/agent/.claude.json
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -536,8 +536,8 @@ services:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude
-      - ${CLAUDE_JSON}:/home/agent/.claude.json
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -559,8 +559,8 @@ services:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude
-      - ${CLAUDE_JSON}:/home/agent/.claude.json
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -582,8 +582,8 @@ services:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude
-      - ${CLAUDE_JSON}:/home/agent/.claude.json
+      - ${CLAUDE_DIR}:/home/agent/.claude:ro
+      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
