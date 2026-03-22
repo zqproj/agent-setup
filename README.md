@@ -34,10 +34,16 @@ claude   # log in with your Pro account
 
 ### 2. Docker + Docker Compose
 ```bash
-curl -fsSL https://get.docker.com | sh
+# Add Docker's official apt repository
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
 sudo usermod -aG docker $USER
 newgrp docker
-sudo apt-get install -y docker-compose-plugin
 ```
 
 ### 3. Git
@@ -233,6 +239,20 @@ Then update `~/infra/agent-setup/.env` with the new token.
 ### Claude Code not authenticated
 ```bash
 claude   # log in again
+```
+
+### Claude Code refuses to run (root/sudo error)
+Agents must not run as root. The Dockerfile creates a non-root user automatically.
+If you see this error, make sure you are using the latest setup.sh and rebuild:
+```bash
+docker compose build --no-cache
+```
+
+### .claude.json missing inside container
+The setup script auto-restores it from backup. If it still fails:
+```bash
+# On the VM, restore manually
+cp ~/.claude/backups/.claude.json.backup.* ~/.claude.json
 ```
 
 ### Project folder already exists

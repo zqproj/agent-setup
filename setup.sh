@@ -445,8 +445,6 @@ CLAUDE_DIR="$HOME/.claude"
 CLAUDE_JSON="$HOME/.claude.json"
 
 cat > docker-compose.yml <<EOF
-version: '3.8'
-
 services:
 
   redis:
