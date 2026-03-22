@@ -122,6 +122,35 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# Check or create project repo on GitHub
+# -----------------------------------------------------------------------------
+header "Checking GitHub Repo"
+
+REPO_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    -H "Authorization: token $GITHUB_TOKEN" \
+    "https://api.github.com/repos/${GITHUB_USER}/${PROJECT_NAME}")
+
+if [ "$REPO_STATUS" = "200" ]; then
+    log "Repo found: ${GITHUB_USER}/${PROJECT_NAME}"
+else
+    echo ""
+    warn "Repo not found: ${GITHUB_USER}/${PROJECT_NAME}"
+    echo -e "  Do you want to create it now? This might be a typo — double check the name."
+    echo -n "  Create '${PROJECT_NAME}'? [y/N] "
+    read -r CONFIRM
+    if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
+        error "Aborted. Check the project name and try again."
+    fi
+    curl -s -X POST \
+        -H "Authorization: token $GITHUB_TOKEN" \
+        -H "Content-Type: application/json" \
+        https://api.github.com/user/repos \
+        -d "{\"name\": \"${PROJECT_NAME}\", \"private\": false, \"auto_init\": true}" \
+        | grep '"full_name"' | sed 's/.*: "\(.*\)".*/\1/' | xargs -I{} log "Repo created: {}"
+    sleep 2  # give GitHub a moment before cloning
+fi
+
+# -----------------------------------------------------------------------------
 # Clone project repo
 # -----------------------------------------------------------------------------
 header "Cloning Project Repo"
