@@ -172,10 +172,9 @@ mkdir -p proj
 # Agent definitions
 mkdir -p agents/{orchestrator,backend_dev,frontend_dev,infrastructure,reviewer,qc_tester,repo_manager}
 
-# Shared runtime state — elevated to project root
-mkdir -p workspace/tickets
-mkdir -p workspace/reviews
-mkdir -p workspace/test_results
+# Shared runtime state — briefs (you write) and sprints (agents write)
+mkdir -p workspace/briefs
+mkdir -p workspace/sprints
 
 log "Folder structure created."
 
@@ -210,8 +209,12 @@ export GITHUB_TOKEN
 export GITHUB_REPO
 export GITHUB_USER
 
-# envsubst substitutes only the host-resolved vars; docker-compose handles the rest at runtime
-envsubst '${CLAUDE_DIR} ${CLAUDE_JSON}' \
+# Sprint 001 is always the starting sprint
+export ACTIVE_SPRINT="/home/sandbox/workspace/sprints/sprint_001"
+export ACTIVE_BRIEF="/home/sandbox/workspace/briefs/brief_001.md"
+
+# envsubst substitutes host-resolved and sprint vars; docker-compose handles the rest at runtime
+envsubst '${CLAUDE_DIR} ${CLAUDE_JSON} ${ACTIVE_SPRINT} ${ACTIVE_BRIEF}' \
     < "$BASE_DIR/agents/shared/docker-compose.template.yml" \
     > docker-compose.yml
 
@@ -224,11 +227,32 @@ cp "$ENV_FILE" .env
 log ".env copied."
 
 # -----------------------------------------------------------------------------
-# Initialize workspace/status.json
+# Seed brief_001.md placeholder
 # -----------------------------------------------------------------------------
-header "Initializing workspace/status.json"
+header "Creating Initial Brief"
 
-cat > workspace/status.json <<EOF
+cat > workspace/briefs/brief_001.md <<EOF
+# Project Brief — Sprint 1
+
+Replace this file with your project requirements before running start.sh.
+
+## What to include
+- What you want to build
+- The tech stack (if you have a preference)
+- Any constraints or special requirements
+- Definition of done for this sprint
+EOF
+
+log "workspace/briefs/brief_001.md created — edit this before running start.sh"
+
+# -----------------------------------------------------------------------------
+# Initialize sprint_001/status.json
+# -----------------------------------------------------------------------------
+header "Initializing Sprint 001"
+
+mkdir -p workspace/sprints/sprint_001/{tickets,reviews,test_results}
+
+cat > workspace/sprints/sprint_001/status.json <<EOF
 {
   "project": "${PROJECT_NAME}",
   "sprint": 1,
@@ -245,7 +269,10 @@ cat > workspace/status.json <<EOF
 }
 EOF
 
-log "workspace/status.json initialized."
+touch workspace/sprints/sprint_001/clarifications.md
+touch workspace/sprints/sprint_001/decisions.log
+
+log "workspace/sprints/sprint_001/ initialized."
 
 # -----------------------------------------------------------------------------
 # Update .gitignore
@@ -255,9 +282,7 @@ header "Updating .gitignore"
 for entry in \
     ".env" \
     "proj/.venv/" \
-    "proj/dist/" \
-    "agents/workspace/*.db" \
-    "agents/workspace/*.log"; do
+    "proj/dist/"; do
     if ! grep -qF "$entry" .gitignore 2>/dev/null; then
         echo "$entry" >> .gitignore
     fi
@@ -312,16 +337,14 @@ echo ""
 echo "Project: $PROJ_DIR"
 echo ""
 echo "Structure:"
-echo "  proj/                    <- project codebase (mounted into all containers)"
-echo "  workspace/tickets/       <- orchestrator writes tickets here"
-echo "  workspace/reviews/       <- reviewer writes reviews here"
-echo "  workspace/test_results/  <- qc_tester writes results here"
-echo "  agents/<name>/           <- CLAUDE.md + Dockerfile per agent"
+echo "  proj/                              <- project codebase"
+echo "  agents/                            <- agent definitions"
+echo "  workspace/briefs/brief_001.md      <- edit this before running start.sh"
+echo "  workspace/sprints/sprint_001/      <- agent output for sprint 1"
 echo ""
 echo "Next steps:"
-echo "  1. Create your project brief:"
-echo "     nano workspace/project-brief.md"
-echo "  2. Start the orchestrator:"
-echo "     cd $PROJ_DIR && docker compose run --rm orchestrator"
-echo "  3. Tell it: Read /home/sandbox/workspace/project-brief.md and follow instructions."
+echo "  1. Edit your project brief:"
+echo "     nano $PROJ_DIR/workspace/briefs/brief_001.md"
+echo "  2. Run start.sh:"
+echo "     ./start.sh $PROJECT_NAME"
 echo ""
