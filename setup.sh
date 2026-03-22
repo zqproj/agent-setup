@@ -166,8 +166,21 @@ cd "$PROJ_DIR"
 # -----------------------------------------------------------------------------
 header "Creating Folder Structure"
 
-# Project code
-mkdir -p proj
+# Project code structure
+mkdir -p proj/src/backend
+mkdir -p proj/src/frontend/templates
+mkdir -p proj/src/frontend/styles
+mkdir -p proj/src/shared
+mkdir -p proj/tests
+mkdir -p proj/assets
+mkdir -p proj/docs
+mkdir -p proj/scripts
+mkdir -p proj/config/dev
+mkdir -p proj/config/prod
+mkdir -p proj/dist
+touch proj/src/__init__.py
+touch proj/src/backend/__init__.py
+touch proj/src/frontend/__init__.py
 
 # Agent definitions
 mkdir -p agents/{orchestrator,backend_dev,frontend_dev,infrastructure,reviewer,qc_tester,repo_manager}
@@ -282,7 +295,9 @@ header "Updating .gitignore"
 for entry in \
     ".env" \
     "proj/.venv/" \
-    "proj/dist/"; do
+    "proj/dist/" \
+    "proj/__pycache__/" \
+    "proj/src/**/__pycache__/"; do
     if ! grep -qF "$entry" .gitignore 2>/dev/null; then
         echo "$entry" >> .gitignore
     fi
@@ -337,7 +352,12 @@ echo ""
 echo "Project: $PROJ_DIR"
 echo ""
 echo "Structure:"
-echo "  proj/                              <- project codebase"
+echo "  proj/src/backend/                  <- backend / API code"
+echo "  proj/src/frontend/templates/       <- HTML templates"
+echo "  proj/tests/                        <- test suite"
+echo "  proj/scripts/                      <- run/deploy scripts"
+echo "  proj/docs/                         <- documentation"
+echo "  proj/config/                       <- environment configs"
 echo "  agents/                            <- agent definitions"
 echo "  workspace/briefs/brief_001.md      <- edit this before running start.sh"
 echo "  workspace/sprints/sprint_001/      <- agent output for sprint 1"
