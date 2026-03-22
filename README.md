@@ -19,7 +19,7 @@ Each agent runs in its own Docker container with a specific role:
 | reviewer | Senior code reviewer — gatekeeper before QC |
 | qc_tester | QA engineer — final gatekeeper before done |
 
-All agents share your Claude Pro login via `~/.claude` mounted read-only.
+All agents share your Claude Pro login via credentials copied at container startup.
 Containers run as the same UID as the host user — no permission issues.
 All agents communicate via shared workspace files and a Redis message broker.
 
@@ -64,15 +64,42 @@ sudo apt-get install -y git
 ## How It Works
 
 ### Credential Sharing
-- `~/.claude/` and `~/.claude.json` are mounted read-only into each container
-- Setup script ensures correct permissions with `chmod 644 ~/.claude.json`
-- Containers run as the same UID/GID as the host `sandbox` user — so file ownership matches automatically
+Claude credentials (`~/.claude/` and `~/.claude.json`) are mounted **read-only** into each
+container at a staging path (`/mnt/claude-config/`). At container startup, `entrypoint.sh`
+copies them into `/home/agent/` where Claude Code expects them.
+
+This means:
+- Each container gets its own **isolated, writable copy** — no read-only write errors
+- No race conditions — 6 agents can run simultaneously without clobbering each other
+- Claude Code can write session metrics freely within the container (discarded on exit)
+- Token usage tracking belongs in `agents/workspace/status.json` (persisted to disk)
+
+### Workspace Trust
+Claude Code prompts to trust each new workspace directory. Since containers run with
+`/home/agent` as their workspace, that path must be trusted in `~/.claude.json` on the
+host before containers start.
+
+This is done once during VM setup (not by `setup.sh`) by simply running Claude Code
+in `/home/agent` and saying yes to the trust prompt. Claude Code writes the trust entry
+into `~/.claude.json` itself — no programmatic modification needed.
+
+`entrypoint.sh` then copies that pre-trusted `~/.claude.json` into `/home/agent/` at
+container startup, so Claude Code sees `/home/agent` as trusted and skips the prompt.
 
 ### No Root
 - Each Dockerfile creates a non-root `agent` user via `useradd`
 - Docker Compose does **not** override the user — the Dockerfile's `USER agent` is used
 - Claude Code requires non-root to use `--dangerously-skip-permissions`
-- `chmod 644 ~/.claude.json` and `chmod -R 755 ~/.claude` run at setup time so the `agent` user can read host credentials
+- `chmod 644 ~/.claude.json` and `chmod -R 755 ~/.claude` run at setup time so the
+  staging mount is readable before `entrypoint.sh` copies it
+
+### Bypassing Trust and Permission Prompts
+Two flags are used together in `entrypoint.sh` for fully unattended operation:
+
+| Flag | What it bypasses |
+|------|-----------------|
+| Pre-trusted `/home/agent` in `~/.claude.json` | Workspace trust prompt at startup |
+| `--dangerously-skip-permissions` | Per-tool confirmation prompts during execution |
 
 ---
 
@@ -113,11 +140,12 @@ chmod +x ~/infra/agent-setup/setup.sh
 No prompts. Runs fully automatically. The script will:
 - Verify Claude Code credentials exist and fix permissions
 - Clone the repo into `~/projects/agent-playground`
-- Copy `.env` into the project and append UID/GID
+- Copy `.env` into the project
 - Create all folder structure
 - Write all CLAUDE.md files for each agent
-- Write all Dockerfiles with non-root user
-- Write docker-compose.yml with user mapping
+- Write `agents/shared/entrypoint.sh` (credential copy + Claude launch)
+- Write all Dockerfiles with non-root user and entrypoint
+- Write docker-compose.yml with credential staging mounts
 - Configure git
 - Push initial structure to GitHub on `dev` branch
 - Build all Docker images
@@ -211,7 +239,7 @@ docker compose logs backend_dev
 │
 └── projects/
     └── agent-playground/         ← bootstrapped by setup.sh
-        ├── .env                   ← copied from agent-setup/.env + UID/GID
+        ├── .env                   ← copied from agent-setup/.env
         ├── docker-compose.yml
         │
         ├── proj/                  ← everything project related
@@ -225,13 +253,14 @@ docker compose logs backend_dev
         │   └── docs/              ← documentation
         │
         └── agents/                ← everything agent related
+            ├── shared/
+            │   └── entrypoint.sh  ← copies credentials, launches claude
             ├── workspace/
             │   ├── tickets/       ← task assignments
             │   ├── reviews/       ← reviewer feedback
             │   ├── test_results/  ← QC results
             │   ├── status.json    ← project state + token usage
             │   └── project_brief.md ← your requirements (you create this)
-            ├── shared/            ← shared agent utilities
             ├── orchestrator/      ← CLAUDE.md + Dockerfile
             ├── backend_dev/       ← CLAUDE.md + Dockerfile
             ├── frontend_dev/      ← CLAUDE.md + Dockerfile
@@ -264,14 +293,25 @@ These are automatically added to `.gitignore` by setup.sh:
 | Your main GitHub account | Agents only use zqproj bot account |
 | zqproj credentials | PAT has no account-level permissions |
 | Main branch | Branch protection — only you can merge |
-| Claude Pro credentials | `~/.claude` mounted read-only in containers |
+| Claude Pro credentials | Mounted read-only to staging path, copied per container |
 | PAT token | In `.env` which is gitignored |
 | Agent scope | CLAUDE.md restricts each agent to its own folder |
 | Container privileges | Runs as non-root `agent` user matching host UID |
+| Concurrent writes | Each container gets isolated credential copy — no race conditions |
 
 ---
 
 ## Troubleshooting
+
+### Trust prompt still appears in container
+`/home/agent` must be trusted on the host VM before containers start.
+This is a one-time VM setup step — if you skipped it:
+```bash
+sudo mkdir -p /home/agent
+cd /home/agent
+claude   # say yes to trust, then /exit
+```
+Then restart the container. No need to rebuild.
 
 ### Docker permission denied
 ```bash
@@ -288,23 +328,22 @@ Then update `~/infra/agent-setup/.env` with the new token.
 ```bash
 claude   # log in again on the VM
 ```
-Then re-run setup — permissions will be fixed automatically.
+Then re-run setup — permissions and trust will be fixed automatically.
 
 ### Claude Code refuses to run (root/sudo error)
-Agents must not run as root. The Dockerfile creates a non-root `agent` user
-and docker-compose passes the host UID/GID. Make sure you are using the
-latest setup.sh and rebuild:
+Agents must not run as root. The Dockerfile creates a non-root `agent` user.
+Make sure you are using the latest setup.sh and rebuild:
 ```bash
 docker compose build --no-cache
 ```
 
-### .claude.json permission denied inside container
-Setup script automatically runs `chmod 644 ~/.claude.json` to fix this.
-If you see this error after setup, run manually on the VM:
+### entrypoint.sh: credential copy fails
+If `~/.claude.json` or `~/.claude/` don't exist on the host at container start,
+the copy will silently skip. Verify on the VM:
 ```bash
-chmod 644 ~/.claude.json
-chmod -R 755 ~/.claude
+ls -la ~/.claude.json ~/.claude/
 ```
+If missing, log in again with `claude` on the VM then restart the container.
 
 ### Project folder already exists
 ```bash

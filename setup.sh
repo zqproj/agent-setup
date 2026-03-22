@@ -396,6 +396,41 @@ EOF
 log "All CLAUDE.md files written."
 
 # -----------------------------------------------------------------------------
+# Write entrypoint.sh — copied into each agent container
+# Copies Claude credentials from read-only host mount into writable agent home.
+# This gives each container its own isolated copy so:
+#   - Claude Code can write session state freely (no read-only errors)
+#   - No race conditions between agents sharing one file
+#   - Trust for /home/agent is already baked into the host ~/.claude.json
+# -----------------------------------------------------------------------------
+header "Writing entrypoint.sh"
+
+cat > agents/shared/entrypoint.sh <<'EOF'
+#!/bin/bash
+set -e
+
+# Copy Claude credentials from host mount into writable agent home.
+# Each container gets its own isolated copy — no shared write conflicts.
+if [ -f /mnt/claude-config/.claude.json ]; then
+    cp /mnt/claude-config/.claude.json /home/agent/.claude.json
+    chmod 644 /home/agent/.claude.json
+fi
+
+if [ -d /mnt/claude-config/.claude ]; then
+    cp -r /mnt/claude-config/.claude /home/agent/.claude
+    chmod -R 755 /home/agent/.claude
+fi
+
+# Launch Claude Code — trust prompt is bypassed because:
+#   - /home/agent is pre-trusted in the copied ~/.claude.json
+#   - --dangerously-skip-permissions skips per-tool confirmations
+exec claude --dangerously-skip-permissions
+EOF
+
+chmod +x agents/shared/entrypoint.sh
+log "agents/shared/entrypoint.sh written."
+
+# -----------------------------------------------------------------------------
 # Write Dockerfiles — non-root user for Claude Code compatibility
 # -----------------------------------------------------------------------------
 header "Writing Dockerfiles"
@@ -423,11 +458,16 @@ RUN git config --global init.defaultBranch main
 WORKDIR /home/agent
 
 COPY CLAUDE.md /home/agent/CLAUDE.md
+
+# Copy entrypoint script — handles credential copy and Claude launch
+COPY ../shared/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 RUN chown -R agent:agent /home/agent
 
 USER agent
 
-CMD ["claude", "--dangerously-skip-permissions"]
+ENTRYPOINT ["/entrypoint.sh"]
 EOF
 }
 
@@ -459,14 +499,15 @@ services:
 
   orchestrator:
     build: ./agents/orchestrator
-    # No 'user:' override — Dockerfile sets USER agent (non-root).
-    # Credentials are readable via chmod 644 run during setup.
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude:ro
-      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
+      # Claude credentials mounted read-only to staging path.
+      # entrypoint.sh copies them to /home/agent/ at startup so
+      # Claude Code gets a writable isolated copy per container.
+      - ${CLAUDE_DIR}:/mnt/claude-config/.claude:ro
+      - ${CLAUDE_JSON}:/mnt/claude-config/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -481,13 +522,12 @@ services:
 
   backend_dev:
     build: ./agents/backend_dev
-    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude:ro
-      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
+      - ${CLAUDE_DIR}:/mnt/claude-config/.claude:ro
+      - ${CLAUDE_JSON}:/mnt/claude-config/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -504,13 +544,12 @@ services:
 
   frontend_dev:
     build: ./agents/frontend_dev
-    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude:ro
-      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
+      - ${CLAUDE_DIR}:/mnt/claude-config/.claude:ro
+      - ${CLAUDE_JSON}:/mnt/claude-config/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -527,13 +566,12 @@ services:
 
   infrastructure:
     build: ./agents/infrastructure
-    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude:ro
-      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
+      - ${CLAUDE_DIR}:/mnt/claude-config/.claude:ro
+      - ${CLAUDE_JSON}:/mnt/claude-config/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -550,13 +588,12 @@ services:
 
   reviewer:
     build: ./agents/reviewer
-    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude:ro
-      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
+      - ${CLAUDE_DIR}:/mnt/claude-config/.claude:ro
+      - ${CLAUDE_JSON}:/mnt/claude-config/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
@@ -573,13 +610,12 @@ services:
 
   qc_tester:
     build: ./agents/qc_tester
-    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
       - ./agents/shared:/home/agent/agents/shared
-      - ${CLAUDE_DIR}:/home/agent/.claude:ro
-      - ${CLAUDE_JSON}:/home/agent/.claude.json:ro
+      - ${CLAUDE_DIR}:/mnt/claude-config/.claude:ro
+      - ${CLAUDE_JSON}:/mnt/claude-config/.claude.json:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
       - GITHUB_REPO=\${GITHUB_REPO}
