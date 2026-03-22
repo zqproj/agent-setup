@@ -35,18 +35,26 @@ fi
 log "Claude Code credentials found at ~/.claude"
 
 # -----------------------------------------------------------------------------
-# Collect credentials
+# Load project .env
 # -----------------------------------------------------------------------------
-header "Credentials"
+header "Loading Project .env"
 
-read -p "Enter your GitHub PAT token: " GITHUB_TOKEN
-if [ -z "$GITHUB_TOKEN" ]; then error "GitHub PAT token cannot be empty."; fi
+ENV_FILE="$HOME/projects/agent-playground/.env"
 
-read -p "Enter your GitHub repo URL (e.g. https://github.com/zqproj/agent-playground.git): " GITHUB_REPO
-if [ -z "$GITHUB_REPO" ]; then error "GitHub repo URL cannot be empty."; fi
+if [ ! -f "$ENV_FILE" ]; then
+    error ".env not found at $ENV_FILE\nCreate it with:\n  GITHUB_TOKEN=your_pat_token\n  GITHUB_REPO=https://github.com/zqproj/agent-playground.git\n  GITHUB_USER=zqproj"
+fi
 
-read -p "Enter your GitHub bot username (e.g. zqproj): " GITHUB_USER
-if [ -z "$GITHUB_USER" ]; then error "GitHub username cannot be empty."; fi
+source "$ENV_FILE"
+
+[ -z "$GITHUB_TOKEN" ] && error "GITHUB_TOKEN is not set in $ENV_FILE"
+[ -z "$GITHUB_REPO"  ] && error "GITHUB_REPO is not set in $ENV_FILE"
+[ -z "$GITHUB_USER"  ] && error "GITHUB_USER is not set in $ENV_FILE"
+
+log "Loaded: $ENV_FILE"
+log "GitHub user: $GITHUB_USER"
+log "GitHub repo: $GITHUB_REPO"
+
 
 # -----------------------------------------------------------------------------
 # Check dependencies
@@ -54,11 +62,11 @@ if [ -z "$GITHUB_USER" ]; then error "GitHub username cannot be empty."; fi
 header "Checking Dependencies"
 
 command -v docker >/dev/null 2>&1         || error "Docker not found. Install Docker first: https://docs.docker.com/engine/install/ubuntu/"
-command -v docker-compose >/dev/null 2>&1 || error "Docker Compose not found. Install it first."
+docker compose version >/dev/null 2>&1 || error "Docker Compose not found. Install it first."
 command -v git >/dev/null 2>&1            || error "Git not found. Run: sudo apt install git"
 
 log "Docker:         $(docker --version)"
-log "Docker Compose: $(docker-compose --version)"
+log "Docker Compose: $(docker compose version)"
 log "Git:            $(git --version)"
 
 # -----------------------------------------------------------------------------
@@ -99,18 +107,8 @@ mkdir -p qc_tester
 
 log "Folder structure created."
 
-# -----------------------------------------------------------------------------
-# Create .env file (no Anthropic key — using ~/.claude mount instead)
-# -----------------------------------------------------------------------------
-header "Creating .env File"
-
-cat > .env <<EOF
-GITHUB_TOKEN=${GITHUB_TOKEN}
-GITHUB_REPO=${GITHUB_REPO}
-GITHUB_USER=${GITHUB_USER}
-EOF
-
-log ".env file created."
+# .env already exists — user created it before running setup
+log ".env already present — skipping creation."
 
 # -----------------------------------------------------------------------------
 # Update .gitignore
@@ -571,7 +569,7 @@ log "Initial structure pushed to GitHub on dev branch."
 header "Building Docker Images"
 echo "This may take a few minutes..."
 
-docker-compose build
+docker compose build
 
 log "Docker images built."
 
@@ -596,9 +594,9 @@ echo "  ./reviewer/       ← expert reviewer agent"
 echo "  ./qc_tester/      ← QC tester agent"
 echo ""
 echo "Useful commands:"
-echo "  Start orchestrator only:  docker-compose run --rm orchestrator"
-echo "  Start all agents:         docker-compose up"
+echo "  Start orchestrator only:  docker compose run --rm orchestrator"
+echo "  Start all agents:         docker compose up"
 echo "  Check token usage:        cat workspace/status.json"
 echo "  List tickets:             ls workspace/tickets/"
-echo "  Stop everything:          docker-compose down"
+echo "  Stop everything:          docker compose down"
 echo ""
