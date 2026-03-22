@@ -283,7 +283,7 @@ cat > workspace/sprints/sprint_001/status.json <<EOF
 EOF
 
 touch workspace/sprints/sprint_001/clarifications.md
-touch workspace/sprints/sprint_001/decisions.log
+touch workspace/sprints/sprint_001/decisions.md
 
 log "workspace/sprints/sprint_001/ initialized."
 
