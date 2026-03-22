@@ -35,9 +35,8 @@ fi
 PROJECT_NAME="$1"
 AGENT="${2:-}"
 PROJ_DIR="$HOME/projects/${PROJECT_NAME}"
-SETUP_DIR="$HOME/infra/agent-setup"
 BASE_DIR="$HOME/infra/agent-team-base"
-ENV_FILE="${SETUP_DIR}/.env"
+ENV_FILE="$HOME/infra/configs/.env"
 
 # -----------------------------------------------------------------------------
 # Bomb if project does not exist
@@ -213,7 +212,7 @@ log "docker-compose.yml regenerated for sprint_${SPRINT_NUM}."
 header "Rebuilding Docker Images"
 
 cd "$PROJ_DIR"
-docker compose build
+docker compose --env-file "$ENV_FILE" build
 log "Images rebuilt."
 
 # Ensure sandbox user can write to mounted directories
@@ -265,4 +264,4 @@ header "Starting ${AGENT:-orchestrator}"
 
 TARGET="${AGENT:-orchestrator}"
 log "Launching $TARGET for sprint_${SPRINT_NUM}..."
-docker compose run --rm "$TARGET"
+docker compose --env-file "$ENV_FILE" run --rm "$TARGET"

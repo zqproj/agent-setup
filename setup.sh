@@ -32,9 +32,8 @@ fi
 
 PROJECT_NAME="$1"
 PROJ_DIR="$HOME/projects/${PROJECT_NAME}"
-SETUP_DIR="$HOME/infra/agent-setup"
 BASE_DIR="$HOME/infra/agent-team-base"
-ENV_FILE="${SETUP_DIR}/.env"
+ENV_FILE="$HOME/infra/configs/.env"
 
 # -----------------------------------------------------------------------------
 # Bomb if project folder already exists
@@ -234,12 +233,6 @@ envsubst '${CLAUDE_DIR} ${CLAUDE_JSON} ${ACTIVE_SPRINT} ${ACTIVE_BRIEF}' \
 log "docker-compose.yml generated."
 
 # -----------------------------------------------------------------------------
-# Copy .env into project for docker compose runtime
-# -----------------------------------------------------------------------------
-cp "$ENV_FILE" .env
-log ".env copied."
-
-# -----------------------------------------------------------------------------
 # Seed brief_001.md placeholder
 # -----------------------------------------------------------------------------
 header "Creating Initial Brief"
@@ -334,7 +327,7 @@ log "Initial structure pushed to dev."
 header "Building Docker Images"
 echo "This may take a few minutes..."
 
-docker compose build
+docker compose --env-file "$ENV_FILE" build
 
 # Ensure sandbox user inside containers can write to mounted directories
 chmod -R 777 "$PROJ_DIR/proj" "$PROJ_DIR/workspace"
