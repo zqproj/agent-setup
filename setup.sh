@@ -158,19 +158,13 @@ header "Copying Agent Artifacts from agent-team-base"
 AGENTS="orchestrator backend_dev frontend_dev infrastructure reviewer qc_tester repo_manager"
 
 for agent in $AGENTS; do
-    # CLAUDE.md
+    # Only CLAUDE.md is agent-specific — Dockerfile and entrypoint.sh
+    # are shared and referenced directly from agents/shared/ at build time
     cp "$BASE_DIR/agents/${agent}/CLAUDE.md" "agents/${agent}/CLAUDE.md"
-
-    # Dockerfile (from shared)
-    cp "$BASE_DIR/agents/shared/Dockerfile" "agents/${agent}/Dockerfile"
-
-    # entrypoint.sh (from shared — must be in each agent build context)
-    cp "$BASE_DIR/agents/shared/entrypoint.sh" "agents/${agent}/entrypoint.sh"
-
-    log "Copied artifacts for ${agent}"
+    log "Copied CLAUDE.md for ${agent}"
 done
 
-# Copy shared directory itself
+# Copy shared directory (Dockerfile + entrypoint.sh live here)
 cp -r "$BASE_DIR/agents/shared" agents/shared
 
 log "All agent artifacts copied."
