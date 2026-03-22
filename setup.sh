@@ -2,8 +2,8 @@
 
 # =============================================================================
 # Agent Project Setup Script
-# Run this once on your Ubuntu sandbox VM from your home directory
-# Usage: chmod +x setup.sh && ./setup.sh
+# Usage: ./setup.sh <project-name>
+# Example: ./setup.sh agent-playground
 # =============================================================================
 
 set -e  # Exit on any error
@@ -23,6 +23,52 @@ error()  { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 header() { echo -e "\n${BLUE}========== $1 ==========${NC}"; }
 
 # -----------------------------------------------------------------------------
+# Validate argument
+# -----------------------------------------------------------------------------
+if [ -z "$1" ]; then
+    error "Usage: ./setup.sh <project-name>
+Example: ./setup.sh agent-playground"
+fi
+
+PROJECT_NAME="$1"
+REPO_DIR="$HOME/projects/${PROJECT_NAME}"
+SETUP_DIR="$HOME/infra/agent-setup"
+ENV_FILE="${SETUP_DIR}/.env"
+
+# -----------------------------------------------------------------------------
+# Bomb if project folder already exists
+# -----------------------------------------------------------------------------
+if [ -d "$REPO_DIR" ]; then
+    error "Project folder already exists: $REPO_DIR
+Delete it first if you want to start fresh:
+  rm -rf $REPO_DIR"
+fi
+
+# -----------------------------------------------------------------------------
+# Verify .env exists in agent-setup
+# -----------------------------------------------------------------------------
+header "Loading .env"
+
+if [ ! -f "$ENV_FILE" ]; then
+    error ".env not found at $ENV_FILE
+Create it with:
+  GITHUB_TOKEN=your_pat_token
+  GITHUB_REPO=https://github.com/zqproj/${PROJECT_NAME}.git
+  GITHUB_USER=zqproj"
+fi
+
+source "$ENV_FILE"
+
+[ -z "$GITHUB_TOKEN" ] && error "GITHUB_TOKEN is not set in $ENV_FILE"
+[ -z "$GITHUB_REPO"  ] && error "GITHUB_REPO is not set in $ENV_FILE"
+[ -z "$GITHUB_USER"  ] && error "GITHUB_USER is not set in $ENV_FILE"
+
+log "Loaded: $ENV_FILE"
+log "Project:     $PROJECT_NAME"
+log "GitHub user: $GITHUB_USER"
+log "GitHub repo: $GITHUB_REPO"
+
+# -----------------------------------------------------------------------------
 # Verify Claude Code is logged in
 # -----------------------------------------------------------------------------
 header "Checking Claude Code Login"
@@ -35,87 +81,75 @@ fi
 log "Claude Code credentials found at ~/.claude"
 
 # -----------------------------------------------------------------------------
-# Load project .env
-# -----------------------------------------------------------------------------
-header "Loading Project .env"
-
-ENV_FILE="$HOME/projects/agent-playground/.env"
-
-if [ ! -f "$ENV_FILE" ]; then
-    error ".env not found at $ENV_FILE\nCreate it with:\n  GITHUB_TOKEN=your_pat_token\n  GITHUB_REPO=https://github.com/zqproj/agent-playground.git\n  GITHUB_USER=zqproj"
-fi
-
-source "$ENV_FILE"
-
-[ -z "$GITHUB_TOKEN" ] && error "GITHUB_TOKEN is not set in $ENV_FILE"
-[ -z "$GITHUB_REPO"  ] && error "GITHUB_REPO is not set in $ENV_FILE"
-[ -z "$GITHUB_USER"  ] && error "GITHUB_USER is not set in $ENV_FILE"
-
-log "Loaded: $ENV_FILE"
-log "GitHub user: $GITHUB_USER"
-log "GitHub repo: $GITHUB_REPO"
-
-
-# -----------------------------------------------------------------------------
 # Check dependencies
 # -----------------------------------------------------------------------------
 header "Checking Dependencies"
 
-command -v docker >/dev/null 2>&1         || error "Docker not found. Install Docker first: https://docs.docker.com/engine/install/ubuntu/"
-docker compose version >/dev/null 2>&1 || error "Docker Compose not found. Install it first."
-command -v git >/dev/null 2>&1            || error "Git not found. Run: sudo apt install git"
+command -v docker >/dev/null 2>&1       || error "Docker not found. Install: https://docs.docker.com/engine/install/ubuntu/"
+docker compose version >/dev/null 2>&1 || error "Docker Compose not found. Run: sudo apt-get install docker-compose-plugin"
+command -v git >/dev/null 2>&1          || error "Git not found. Run: sudo apt install git"
 
 log "Docker:         $(docker --version)"
 log "Docker Compose: $(docker compose version)"
 log "Git:            $(git --version)"
 
 # -----------------------------------------------------------------------------
-# Clone the agent-playground repo
+# Clone repo
 # -----------------------------------------------------------------------------
-header "Cloning Agent Playground Repo"
+header "Cloning Repo"
 
-REPO_DIR="$HOME/projects/agent-playground"
-
-if [ -d "$REPO_DIR" ]; then
-    warn "Directory $REPO_DIR already exists — skipping clone."
-else
-    git clone "https://${GITHUB_USER}:${GITHUB_TOKEN}@$(echo $GITHUB_REPO | sed 's|https://||')" "$REPO_DIR"
-    log "Repo cloned to $REPO_DIR"
-fi
+mkdir -p "$HOME/projects"
+git clone "https://${GITHUB_USER}:${GITHUB_TOKEN}@$(echo $GITHUB_REPO | sed 's|https://||')" "$REPO_DIR"
+log "Repo cloned to $REPO_DIR"
 
 cd "$REPO_DIR"
+
+# -----------------------------------------------------------------------------
+# Copy .env into project folder for docker compose
+# -----------------------------------------------------------------------------
+cp "$ENV_FILE" .env
+log ".env copied into project."
 
 # -----------------------------------------------------------------------------
 # Create folder structure
 # -----------------------------------------------------------------------------
 header "Creating Folder Structure"
 
-mkdir -p workspace/tickets
-mkdir -p workspace/reviews
-mkdir -p workspace/test_results
-mkdir -p codebase/backend
-mkdir -p codebase/frontend
-mkdir -p codebase/infrastructure
-mkdir -p codebase/tests
-mkdir -p shared
-mkdir -p orchestrator
-mkdir -p backend_dev
-mkdir -p frontend_dev
-mkdir -p infrastructure
-mkdir -p reviewer
-mkdir -p qc_tester
+# Project folders
+mkdir -p proj/src/backend
+mkdir -p proj/src/frontend
+mkdir -p proj/src/infrastructure
+mkdir -p proj/src/tests
+mkdir -p proj/assets
+mkdir -p proj/dist
+mkdir -p proj/docs
+
+# Agent folders
+mkdir -p agents/workspace/tickets
+mkdir -p agents/workspace/reviews
+mkdir -p agents/workspace/test_results
+mkdir -p agents/shared
+mkdir -p agents/orchestrator
+mkdir -p agents/backend_dev
+mkdir -p agents/frontend_dev
+mkdir -p agents/infrastructure
+mkdir -p agents/reviewer
+mkdir -p agents/qc_tester
 
 log "Folder structure created."
-
-# .env already exists — user created it before running setup
-log ".env already present — skipping creation."
 
 # -----------------------------------------------------------------------------
 # Update .gitignore
 # -----------------------------------------------------------------------------
 header "Updating .gitignore"
 
-for entry in ".env" "workspace/*.db" "workspace/*.log"; do
+for entry in \
+    ".env" \
+    "proj/.venv/" \
+    "proj/dist/" \
+    "proj/.vscode/" \
+    "agents/workspace/*.db" \
+    "agents/workspace/*.log"; do
     if ! grep -qF "$entry" .gitignore 2>/dev/null; then
         echo "$entry" >> .gitignore
     fi
@@ -128,9 +162,9 @@ log ".gitignore updated."
 # -----------------------------------------------------------------------------
 header "Initializing Workspace Files"
 
-cat > workspace/status.json <<EOF
+cat > agents/workspace/status.json <<EOF
 {
-  "project": "agent-playground",
+  "project": "${PROJECT_NAME}",
   "sprint": 1,
   "tickets": {},
   "token_usage": {
@@ -144,14 +178,14 @@ cat > workspace/status.json <<EOF
 }
 EOF
 
-log "workspace/status.json initialized."
+log "agents/workspace/status.json initialized."
 
 # -----------------------------------------------------------------------------
 # Write CLAUDE.md files
 # -----------------------------------------------------------------------------
 header "Writing CLAUDE.md Files"
 
-cat > orchestrator/CLAUDE.md <<'EOF'
+cat > agents/orchestrator/CLAUDE.md <<'EOF'
 # Orchestrator Agent
 
 ## Role
@@ -167,16 +201,16 @@ You never write code yourself — you only delegate and coordinate.
 - qc_tester:      testing, bug finding, test suites
 
 ## Rules
-- Always create tickets in /workspace/tickets/ before assigning work
-- Track all ticket status changes in /workspace/status.json
+- Always create tickets in /agents/workspace/tickets/ before assigning work
+- Track all ticket status changes in /agents/workspace/status.json
 - A ticket is only DONE when QC passes
 - If reviewer rejects, reassign to original agent with full feedback
 - If QC fails, reassign to original agent with test failure details
-- Never modify files in /codebase/ directly
+- Never modify files in /proj/ directly
 - Never push directly to main or dev
 
 ## Ticket Format
-Create tickets as /workspace/tickets/ticket_XXX.md
+Create tickets as /agents/workspace/tickets/ticket_XXX.md
 
 ## Workflow
 Requirements → Tickets → Assign → Review → QC → Done
@@ -186,7 +220,7 @@ Requirements → Tickets → Assign → Review → QC → Done
 - Only mark done after QC passes on the branch
 EOF
 
-cat > backend_dev/CLAUDE.md <<'EOF'
+cat > agents/backend_dev/CLAUDE.md <<'EOF'
 # Backend Developer Agent
 
 ## Role
@@ -194,11 +228,11 @@ You are a senior backend engineer specializing in
 databases, APIs, and server-side logic.
 
 ## Rules
-- Only work on tickets assigned to you in /workspace/tickets/
-- All code goes in /codebase/backend/
-- Write unit tests alongside all code
+- Only work on tickets assigned to you in /agents/workspace/tickets/
+- All code goes in /proj/src/backend/
+- Write unit tests in /proj/src/tests/
 - When done, update ticket status to "review_needed"
-- Never touch /codebase/frontend/ or /codebase/infrastructure/
+- Never touch /proj/src/frontend/ or /proj/src/infrastructure/
 - Never push directly to main or dev
 
 ## Stack
@@ -219,7 +253,7 @@ databases, APIs, and server-side logic.
 - Ticket status updated to review_needed
 EOF
 
-cat > frontend_dev/CLAUDE.md <<'EOF'
+cat > agents/frontend_dev/CLAUDE.md <<'EOF'
 # Frontend Developer Agent
 
 ## Role
@@ -227,11 +261,13 @@ You are a senior frontend engineer specializing in
 UI components, styling, and user experience.
 
 ## Rules
-- Only work on tickets assigned to you in /workspace/tickets/
-- All code goes in /codebase/frontend/
-- Write component tests alongside all code
+- Only work on tickets assigned to you in /agents/workspace/tickets/
+- All code goes in /proj/src/frontend/
+- Write component tests in /proj/src/tests/
+- Static assets go in /proj/assets/
+- Build output goes in /proj/dist/
 - When done, update ticket status to "review_needed"
-- Never touch /codebase/backend/ or /codebase/infrastructure/
+- Never touch /proj/src/backend/ or /proj/src/infrastructure/
 - Never push directly to main or dev
 
 ## Stack
@@ -252,7 +288,7 @@ UI components, styling, and user experience.
 - Ticket status updated to review_needed
 EOF
 
-cat > infrastructure/CLAUDE.md <<'EOF'
+cat > agents/infrastructure/CLAUDE.md <<'EOF'
 # Infrastructure Agent
 
 ## Role
@@ -260,11 +296,11 @@ You are a senior infrastructure and DevOps engineer specializing
 in web servers, deployment, and system configuration.
 
 ## Rules
-- Only work on tickets assigned to you in /workspace/tickets/
-- All config goes in /codebase/infrastructure/
-- Document every configuration change
+- Only work on tickets assigned to you in /agents/workspace/tickets/
+- All config goes in /proj/src/infrastructure/
+- Document every configuration change in /proj/docs/
 - When done, update ticket status to "review_needed"
-- Never touch /codebase/backend/ or /codebase/frontend/
+- Never touch /proj/src/backend/ or /proj/src/frontend/
 - Never push directly to main or dev
 
 ## Stack
@@ -280,11 +316,11 @@ in web servers, deployment, and system configuration.
 
 ## Definition of Done
 - Configuration written and tested
-- Documentation updated
+- Documentation updated in /proj/docs/
 - Ticket status updated to review_needed
 EOF
 
-cat > reviewer/CLAUDE.md <<'EOF'
+cat > agents/reviewer/CLAUDE.md <<'EOF'
 # Expert Reviewer Agent
 
 ## Role
@@ -294,7 +330,7 @@ You are the gatekeeper — nothing reaches QC without your approval.
 
 ## Rules
 - Read ALL changed files before reviewing
-- Write detailed feedback in /workspace/reviews/review_XXX.md
+- Write detailed feedback in /agents/workspace/reviews/review_XXX.md
 - Verdict must be clearly APPROVED or REJECTED
 - If rejected, be specific — list exactly what must change
 - Never approve code with security vulnerabilities
@@ -311,10 +347,10 @@ You are the gatekeeper — nothing reaches QC without your approval.
 
 ## After Review
 - Update ticket status to "approved" or "rejected"
-- Write review file in /workspace/reviews/
+- Write review file in /agents/workspace/reviews/
 EOF
 
-cat > qc_tester/CLAUDE.md <<'EOF'
+cat > agents/qc_tester/CLAUDE.md <<'EOF'
 # QC Tester Agent
 
 ## Role
@@ -326,7 +362,7 @@ before users do. You are the final gatekeeper before done.
 - Run ALL existing tests first — verify nothing regressed
 - Write new tests for all new functionality
 - Test edge cases and failure scenarios
-- Record all results in /workspace/test_results/results_XXX.md
+- Record all results in /agents/workspace/test_results/results_XXX.md
 - Verdict must be clearly PASSED or FAILED
 - If failed, list specific failures with reproduction steps
 
@@ -338,13 +374,13 @@ before users do. You are the final gatekeeper before done.
 
 ## After Testing
 - Update ticket status to "passed" or "failed"
-- Write results file in /workspace/test_results/
+- Write results file in /agents/workspace/test_results/
 EOF
 
 log "All CLAUDE.md files written."
 
 # -----------------------------------------------------------------------------
-# Write Dockerfiles (identical base for all agents)
+# Write Dockerfiles
 # -----------------------------------------------------------------------------
 header "Writing Dockerfiles"
 
@@ -353,7 +389,6 @@ write_dockerfile() {
     cat > ${dir}/Dockerfile <<'EOF'
 FROM node:20-slim
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -361,34 +396,30 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code
 RUN npm install -g @anthropic-ai/claude-code
 
-# Configure git defaults
 RUN git config --global credential.helper store
 RUN git config --global init.defaultBranch main
 
 WORKDIR /agent
 
-# Copy this agent's CLAUDE.md
 COPY CLAUDE.md /agent/CLAUDE.md
 
 CMD ["claude", "--dangerously-skip-permissions"]
 EOF
 }
 
-write_dockerfile orchestrator
-write_dockerfile backend_dev
-write_dockerfile frontend_dev
-write_dockerfile infrastructure
-write_dockerfile reviewer
-write_dockerfile qc_tester
+write_dockerfile agents/orchestrator
+write_dockerfile agents/backend_dev
+write_dockerfile agents/frontend_dev
+write_dockerfile agents/infrastructure
+write_dockerfile agents/reviewer
+write_dockerfile agents/qc_tester
 
 log "Dockerfiles written for all agents."
 
 # -----------------------------------------------------------------------------
 # Write docker-compose.yml
-# ~/.claude mounted read-only so all agents share your Pro login
 # -----------------------------------------------------------------------------
 header "Writing docker-compose.yml"
 
@@ -406,11 +437,11 @@ services:
     restart: unless-stopped
 
   orchestrator:
-    build: ./orchestrator
+    build: ./agents/orchestrator
     volumes:
-      - ./codebase:/codebase
-      - ./workspace:/workspace
-      - ./shared:/shared
+      - ./proj:/proj
+      - ./agents/workspace:/agents/workspace
+      - ./agents/shared:/agents/shared
       - ${CLAUDE_DIR}:/root/.claude:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
@@ -425,11 +456,11 @@ services:
     tty: true
 
   backend_dev:
-    build: ./backend_dev
+    build: ./agents/backend_dev
     volumes:
-      - ./codebase:/codebase
-      - ./workspace:/workspace
-      - ./shared:/shared
+      - ./proj:/proj
+      - ./agents/workspace:/agents/workspace
+      - ./agents/shared:/agents/shared
       - ${CLAUDE_DIR}:/root/.claude:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
@@ -446,11 +477,11 @@ services:
       - agent_network
 
   frontend_dev:
-    build: ./frontend_dev
+    build: ./agents/frontend_dev
     volumes:
-      - ./codebase:/codebase
-      - ./workspace:/workspace
-      - ./shared:/shared
+      - ./proj:/proj
+      - ./agents/workspace:/agents/workspace
+      - ./agents/shared:/agents/shared
       - ${CLAUDE_DIR}:/root/.claude:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
@@ -467,11 +498,11 @@ services:
       - agent_network
 
   infrastructure:
-    build: ./infrastructure
+    build: ./agents/infrastructure
     volumes:
-      - ./codebase:/codebase
-      - ./workspace:/workspace
-      - ./shared:/shared
+      - ./proj:/proj
+      - ./agents/workspace:/agents/workspace
+      - ./agents/shared:/agents/shared
       - ${CLAUDE_DIR}:/root/.claude:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
@@ -488,11 +519,11 @@ services:
       - agent_network
 
   reviewer:
-    build: ./reviewer
+    build: ./agents/reviewer
     volumes:
-      - ./codebase:/codebase
-      - ./workspace:/workspace
-      - ./shared:/shared
+      - ./proj:/proj
+      - ./agents/workspace:/agents/workspace
+      - ./agents/shared:/agents/shared
       - ${CLAUDE_DIR}:/root/.claude:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
@@ -509,11 +540,11 @@ services:
       - agent_network
 
   qc_tester:
-    build: ./qc_tester
+    build: ./agents/qc_tester
     volumes:
-      - ./codebase:/codebase
-      - ./workspace:/workspace
-      - ./shared:/shared
+      - ./proj:/proj
+      - ./agents/workspace:/agents/workspace
+      - ./agents/shared:/agents/shared
       - ${CLAUDE_DIR}:/root/.claude:ro
     environment:
       - GITHUB_TOKEN=\${GITHUB_TOKEN}
@@ -537,23 +568,19 @@ EOF
 log "docker-compose.yml written."
 
 # -----------------------------------------------------------------------------
-# Configure git for the project
+# Configure git
 # -----------------------------------------------------------------------------
 header "Configuring Git"
 
 git config user.name "${GITHUB_USER}"
 git config user.email "${GITHUB_USER}@users.noreply.github.com"
-
-# Embed PAT in remote URL so push/pull work without password prompts
 git remote set-url origin "https://${GITHUB_USER}:${GITHUB_TOKEN}@$(echo $GITHUB_REPO | sed 's|https://||')"
-
-# Create dev branch if it doesn't exist
 git checkout -b dev 2>/dev/null || git checkout dev
 
 log "Git configured."
 
 # -----------------------------------------------------------------------------
-# Commit and push initial structure to GitHub
+# Commit and push
 # -----------------------------------------------------------------------------
 header "Pushing Initial Structure to GitHub"
 
@@ -581,22 +608,22 @@ header "Setup Complete"
 echo ""
 echo -e "${GREEN}Everything is ready!${NC}"
 echo ""
-echo "Project location: $REPO_DIR"
+echo "Project: $REPO_DIR"
 echo ""
-echo "Folder summary:"
-echo "  ./codebase/       ← agents write code here"
-echo "  ./workspace/      ← tickets, reviews, test results"
-echo "  ./orchestrator/   ← orchestrator agent"
-echo "  ./backend_dev/    ← backend developer agent"
-echo "  ./frontend_dev/   ← frontend developer agent"
-echo "  ./infrastructure/ ← infrastructure agent"
-echo "  ./reviewer/       ← expert reviewer agent"
-echo "  ./qc_tester/      ← QC tester agent"
+echo "Structure:"
+echo "  proj/src/backend/      ← backend source code"
+echo "  proj/src/frontend/     ← frontend source code"
+echo "  proj/src/infrastructure/ ← infrastructure config"
+echo "  proj/src/tests/        ← test suites"
+echo "  proj/assets/           ← static assets"
+echo "  proj/dist/             ← build output (gitignored)"
+echo "  proj/docs/             ← documentation"
+echo "  agents/workspace/      ← tickets, reviews, test results"
 echo ""
-echo "Useful commands:"
-echo "  Start orchestrator only:  docker compose run --rm orchestrator"
-echo "  Start all agents:         docker compose up"
-echo "  Check token usage:        cat workspace/status.json"
-echo "  List tickets:             ls workspace/tickets/"
-echo "  Stop everything:          docker compose down"
+echo "Useful commands (from $REPO_DIR):"
+echo "  Start orchestrator:  docker compose run --rm orchestrator"
+echo "  Start all agents:    docker compose up"
+echo "  Check tickets:       ls agents/workspace/tickets/"
+echo "  Check status:        cat agents/workspace/status.json"
+echo "  Stop everything:     docker compose down"
 echo ""

@@ -61,18 +61,9 @@ cd ~/infra
 git clone https://zqproj:YOUR_PAT@github.com/zqproj/agent-setup.git
 ```
 
-### Step 2 — Create Projects Folder
+### Step 2 — Create The .env File
 ```bash
-mkdir ~/projects
-```
-
-### Step 3 — Create The Project Repo On GitHub
-Create a new private repo on the zqproj GitHub account (e.g. `agent-playground`).
-
-### Step 4 — Create The Project .env
-```bash
-mkdir ~/projects/agent-playground
-nano ~/projects/agent-playground/.env
+nano ~/infra/agent-setup/.env
 ```
 
 Add these values:
@@ -83,27 +74,36 @@ GITHUB_USER=zqproj
 ```
 
 > ⚠️ `.env` is in `.gitignore` — it will never be committed to GitHub.
+> Update GITHUB_REPO each time you start a new project.
 
-### Step 5 — Run Setup
+### Step 3 — Create A Repo On GitHub
+Create a new private repo on the zqproj GitHub account (e.g. `agent-playground`).
+
+### Step 4 — Run Setup
 ```bash
 chmod +x ~/infra/agent-setup/setup.sh
-~/infra/agent-setup/setup.sh
+~/infra/agent-setup/setup.sh agent-playground
 ```
 
-No prompts. The script reads from the project `.env` and runs fully automatically.
+No prompts. Runs fully automatically.
 
 ---
 
 ## Starting A New Project
 
 1. Create a new private repo on zqproj GitHub account
-2. Copy and edit the `.env`:
+2. Update `.env` with the new repo URL:
 ```bash
-mkdir ~/projects/new-project
-cp ~/projects/agent-playground/.env ~/projects/new-project/.env
-nano ~/projects/new-project/.env   # update GITHUB_REPO
+nano ~/infra/agent-setup/.env
+# update GITHUB_REPO=https://github.com/zqproj/new-project.git
 ```
-3. Run setup again — it picks up the new project automatically
+3. Run setup with the new project name:
+```bash
+~/infra/agent-setup/setup.sh new-project
+```
+
+> If the project folder already exists the script will bomb — intentional.
+> Delete it first: `rm -rf ~/projects/new-project`
 
 ---
 
@@ -136,10 +136,10 @@ You → Orchestrator → creates tickets → assigns to agents
 ### Useful Commands
 ```bash
 # Check ticket status
-cat ~/projects/agent-playground/workspace/status.json
+cat ~/projects/agent-playground/agents/workspace/status.json
 
 # List tickets
-ls ~/projects/agent-playground/workspace/tickets/
+ls ~/projects/agent-playground/agents/workspace/tickets/
 
 # View agent logs
 docker compose logs orchestrator
@@ -153,32 +153,55 @@ docker compose logs backend_dev
 ```
 ~/
 ├── infra/
-│   └── agent-setup/          ← you are here
-│       ├── setup.sh           ← run to bootstrap a project
-│       └── README.md          ← this file
+│   └── agent-setup/              ← you are here
+│       ├── setup.sh               ← run to bootstrap a project
+│       ├── .env                   ← your secrets (never committed)
+│       └── README.md              ← this file
 │
 └── projects/
-    └── agent-playground/     ← bootstrapped by setup.sh
-        ├── .env               ← your secrets (never committed)
+    └── agent-playground/         ← bootstrapped by setup.sh
+        ├── .env                   ← copied from agent-setup/.env
         ├── docker-compose.yml
-        ├── codebase/          ← agents write code here
-        │   ├── backend/
-        │   ├── frontend/
-        │   ├── infrastructure/
-        │   └── tests/
-        ├── workspace/         ← agent communication
-        │   ├── tickets/
-        │   ├── reviews/
-        │   ├── test_results/
-        │   └── status.json
-        ├── shared/
-        ├── orchestrator/      ← CLAUDE.md + Dockerfile
-        ├── backend_dev/       ← CLAUDE.md + Dockerfile
-        ├── frontend_dev/      ← CLAUDE.md + Dockerfile
-        ├── infrastructure/    ← CLAUDE.md + Dockerfile
-        ├── reviewer/          ← CLAUDE.md + Dockerfile
-        └── qc_tester/         ← CLAUDE.md + Dockerfile
+        │
+        ├── proj/                  ← everything project related
+        │   ├── src/
+        │   │   ├── backend/       ← FastAPI source code
+        │   │   ├── frontend/      ← React source code
+        │   │   ├── infrastructure/← server/deployment config
+        │   │   └── tests/         ← test suites
+        │   ├── assets/            ← static files, images, fonts
+        │   ├── dist/              ← build output (gitignored)
+        │   └── docs/              ← documentation
+        │
+        └── agents/                ← everything agent related
+            ├── workspace/
+            │   ├── tickets/       ← task assignments
+            │   ├── reviews/       ← reviewer feedback
+            │   ├── test_results/  ← QC results
+            │   └── status.json    ← project state + token usage
+            ├── shared/            ← shared agent utilities
+            ├── orchestrator/      ← CLAUDE.md + Dockerfile
+            ├── backend_dev/       ← CLAUDE.md + Dockerfile
+            ├── frontend_dev/      ← CLAUDE.md + Dockerfile
+            ├── infrastructure/    ← CLAUDE.md + Dockerfile
+            ├── reviewer/          ← CLAUDE.md + Dockerfile
+            └── qc_tester/         ← CLAUDE.md + Dockerfile
 ```
+
+---
+
+## Gitignore
+
+These are automatically added to `.gitignore` by setup.sh:
+
+| Entry | Reason |
+|-------|--------|
+| `.env` | Contains PAT token |
+| `proj/.venv/` | Python virtual environment |
+| `proj/dist/` | Build output — regenerated |
+| `proj/.vscode/` | Editor settings |
+| `agents/workspace/*.db` | Local databases |
+| `agents/workspace/*.log` | Log files |
 
 ---
 
@@ -205,12 +228,15 @@ sudo usermod -aG docker $USER && newgrp docker
 ### Git push fails
 PAT token may have expired. Regenerate at:
 GitHub → Settings → Developer Settings → Fine-grained tokens
-Then update `.env` with the new token.
+Then update `~/infra/agent-setup/.env` with the new token.
 
 ### Claude Code not authenticated
 ```bash
 claude   # log in again
 ```
 
-### setup.sh fails on .env not found
-Make sure you created `~/projects/agent-playground/.env` before running setup.
+### Project folder already exists
+```bash
+rm -rf ~/projects/project-name
+~/infra/agent-setup/setup.sh project-name
+```
