@@ -121,6 +121,22 @@ log "Active brief:  brief_${SPRINT_NUM}.md"
 log "Active sprint: sprint_${SPRINT_NUM}"
 
 # -----------------------------------------------------------------------------
+# Check if active sprint is already complete
+# -----------------------------------------------------------------------------
+STATUS_FILE="$SPRINT_DIR/status.json"
+
+if [ -f "$STATUS_FILE" ]; then
+    SPRINT_STATUS=$(python3 -c "import json,sys; d=json.load(open('$STATUS_FILE')); print(d.get('status',''))" 2>/dev/null || echo "")
+    if [ "$SPRINT_STATUS" = "complete" ]; then
+        echo ""
+        error "sprint_${SPRINT_NUM} is already complete.
+To start new work, create a new brief:
+  nano $PROJ_DIR/workspace/briefs/brief_$(printf '%03d' $((10#$SPRINT_NUM + 1))).md
+Then run start.sh again."
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # Create sprint folder if new sprint
 # -----------------------------------------------------------------------------
 if [ ! -d "$SPRINT_DIR" ]; then
@@ -229,8 +245,15 @@ fi
 
 STATUS="$SPRINT_DIR/status.json"
 if [ -f "$STATUS" ]; then
-    echo ""
-    cat "$STATUS"
+    DONE=$(python3 -c "
+import json, sys
+d = json.load(open('$STATUS'))
+tickets = d.get('tickets', {})
+total = len(tickets)
+done = sum(1 for t in tickets.values() if t.get('status') == 'DONE')
+print(f'{done}/{total} tickets done')
+" 2>/dev/null || echo "unknown")
+    echo -e "  Tickets: $DONE"
 fi
 
 echo ""
