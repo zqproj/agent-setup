@@ -14,12 +14,13 @@ Each agent runs in its own Docker container with a specific role:
 |-------|------|
 | orchestrator | Team lead — breaks requirements into tickets, coordinates agents |
 | backend_dev | Database, APIs, server-side logic (Python/FastAPI/PostgreSQL) |
-| frontend_dev | UI components, styling, UX (React/TypeScript/Tailwind) |
+| frontend_dev | UI components, styling, UX (HTMX/Tailwind/Jinja2) |
 | infrastructure | Web servers, deployment, configuration (Docker/Nginx) |
 | reviewer | Senior code reviewer — gatekeeper before QC |
 | qc_tester | QA engineer — final gatekeeper before done |
 
 All agents share your Claude Pro login via `~/.claude` mounted read-only.
+Containers run as the same UID as the host user — no permission issues.
 All agents communicate via shared workspace files and a Redis message broker.
 
 ---
@@ -37,7 +38,9 @@ claude   # log in with your Pro account
 # Add Docker's official apt repository
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
@@ -55,6 +58,20 @@ sudo apt-get install -y git
 - Separate GitHub account — never your main account
 - Fine-grained PAT with repository read/write permissions only
 - No account-level permissions granted
+
+---
+
+## How It Works
+
+### Credential Sharing
+- `~/.claude/` and `~/.claude.json` are mounted read-only into each container
+- Setup script ensures correct permissions with `chmod 644 ~/.claude.json`
+- Containers run as the same UID/GID as the host `sandbox` user — so file ownership matches automatically
+
+### No Root
+- Each Dockerfile creates a non-root `agent` user
+- Docker Compose passes `user: "${UID}:${GID}"` so the container user matches the host user
+- Claude Code requires non-root to use `--dangerously-skip-permissions`
 
 ---
 
@@ -84,6 +101,7 @@ GITHUB_USER=zqproj
 
 ### Step 3 — Create A Repo On GitHub
 Create a new private repo on the zqproj GitHub account (e.g. `agent-playground`).
+Make sure the PAT token has Read/Write access to it.
 
 ### Step 4 — Run Setup
 ```bash
@@ -91,7 +109,17 @@ chmod +x ~/infra/agent-setup/setup.sh
 ~/infra/agent-setup/setup.sh agent-playground
 ```
 
-No prompts. Runs fully automatically.
+No prompts. Runs fully automatically. The script will:
+- Verify Claude Code credentials exist and fix permissions
+- Clone the repo into `~/projects/agent-playground`
+- Copy `.env` into the project and append UID/GID
+- Create all folder structure
+- Write all CLAUDE.md files for each agent
+- Write all Dockerfiles with non-root user
+- Write docker-compose.yml with user mapping
+- Configure git
+- Push initial structure to GitHub on `dev` branch
+- Build all Docker images
 
 ---
 
@@ -132,6 +160,22 @@ docker compose down
 
 ## Daily Workflow
 
+### Starting A Session
+1. Create a project brief:
+```bash
+nano ~/projects/agent-playground/agents/workspace/project_brief.md
+```
+2. Start the orchestrator:
+```bash
+cd ~/projects/agent-playground
+docker compose run --rm orchestrator
+```
+3. Tell it:
+```
+Read /home/agent/agents/workspace/project_brief.md and follow the instructions there.
+```
+
+### Agent Flow
 ```
 You → Orchestrator → creates tickets → assigns to agents
                    ← reviewer approves/rejects
@@ -166,13 +210,13 @@ docker compose logs backend_dev
 │
 └── projects/
     └── agent-playground/         ← bootstrapped by setup.sh
-        ├── .env                   ← copied from agent-setup/.env
+        ├── .env                   ← copied from agent-setup/.env + UID/GID
         ├── docker-compose.yml
         │
         ├── proj/                  ← everything project related
         │   ├── src/
         │   │   ├── backend/       ← FastAPI source code
-        │   │   ├── frontend/      ← React source code
+        │   │   ├── frontend/      ← HTMX/Tailwind templates
         │   │   ├── infrastructure/← server/deployment config
         │   │   └── tests/         ← test suites
         │   ├── assets/            ← static files, images, fonts
@@ -184,7 +228,8 @@ docker compose logs backend_dev
             │   ├── tickets/       ← task assignments
             │   ├── reviews/       ← reviewer feedback
             │   ├── test_results/  ← QC results
-            │   └── status.json    ← project state + token usage
+            │   ├── status.json    ← project state + token usage
+            │   └── project_brief.md ← your requirements (you create this)
             ├── shared/            ← shared agent utilities
             ├── orchestrator/      ← CLAUDE.md + Dockerfile
             ├── backend_dev/       ← CLAUDE.md + Dockerfile
@@ -202,7 +247,7 @@ These are automatically added to `.gitignore` by setup.sh:
 
 | Entry | Reason |
 |-------|--------|
-| `.env` | Contains PAT token |
+| `.env` | Contains PAT token and UID/GID |
 | `proj/.venv/` | Python virtual environment |
 | `proj/dist/` | Build output — regenerated |
 | `proj/.vscode/` | Editor settings |
@@ -221,6 +266,7 @@ These are automatically added to `.gitignore` by setup.sh:
 | Claude Pro credentials | `~/.claude` mounted read-only in containers |
 | PAT token | In `.env` which is gitignored |
 | Agent scope | CLAUDE.md restricts each agent to its own folder |
+| Container privileges | Runs as non-root `agent` user matching host UID |
 
 ---
 
@@ -232,31 +278,44 @@ sudo usermod -aG docker $USER && newgrp docker
 ```
 
 ### Git push fails
-PAT token may have expired. Regenerate at:
+PAT token may have expired or lacks write access. Regenerate at:
 GitHub → Settings → Developer Settings → Fine-grained tokens
+Make sure to select the specific repo and grant Contents read/write.
 Then update `~/infra/agent-setup/.env` with the new token.
 
 ### Claude Code not authenticated
 ```bash
-claude   # log in again
+claude   # log in again on the VM
 ```
+Then re-run setup — permissions will be fixed automatically.
 
 ### Claude Code refuses to run (root/sudo error)
-Agents must not run as root. The Dockerfile creates a non-root user automatically.
-If you see this error, make sure you are using the latest setup.sh and rebuild:
+Agents must not run as root. The Dockerfile creates a non-root `agent` user
+and docker-compose passes the host UID/GID. Make sure you are using the
+latest setup.sh and rebuild:
 ```bash
 docker compose build --no-cache
 ```
 
-### .claude.json missing inside container
-The setup script auto-restores it from backup. If it still fails:
+### .claude.json permission denied inside container
+Setup script automatically runs `chmod 644 ~/.claude.json` to fix this.
+If you see this error after setup, run manually on the VM:
 ```bash
-# On the VM, restore manually
-cp ~/.claude/backups/.claude.json.backup.* ~/.claude.json
+chmod 644 ~/.claude.json
+chmod -R 755 ~/.claude
 ```
 
 ### Project folder already exists
 ```bash
 rm -rf ~/projects/project-name
 ~/infra/agent-setup/setup.sh project-name
+```
+
+### Clean slate — remove everything and start over
+```bash
+# Remove project
+rm -rf ~/projects/agent-playground
+
+# Remove all Docker images and containers
+docker system prune -a -f
 ```
