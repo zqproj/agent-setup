@@ -432,6 +432,8 @@ log "agents/shared/entrypoint.sh written."
 
 # -----------------------------------------------------------------------------
 # Write Dockerfiles — non-root user for Claude Code compatibility
+# entrypoint.sh is copied into each agent directory individually so it sits
+# inside each Docker build context (Docker cannot COPY from outside the context).
 # -----------------------------------------------------------------------------
 header "Writing Dockerfiles"
 
@@ -460,7 +462,7 @@ WORKDIR /home/agent
 COPY CLAUDE.md /home/agent/CLAUDE.md
 
 # Copy entrypoint script — handles credential copy and Claude launch
-COPY ../shared/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 RUN chown -R agent:agent /home/agent
@@ -472,11 +474,22 @@ EOF
 }
 
 write_dockerfile agents/orchestrator
+cp agents/shared/entrypoint.sh agents/orchestrator/entrypoint.sh
+
 write_dockerfile agents/backend_dev
+cp agents/shared/entrypoint.sh agents/backend_dev/entrypoint.sh
+
 write_dockerfile agents/frontend_dev
+cp agents/shared/entrypoint.sh agents/frontend_dev/entrypoint.sh
+
 write_dockerfile agents/infrastructure
+cp agents/shared/entrypoint.sh agents/infrastructure/entrypoint.sh
+
 write_dockerfile agents/reviewer
+cp agents/shared/entrypoint.sh agents/reviewer/entrypoint.sh
+
 write_dockerfile agents/qc_tester
+cp agents/shared/entrypoint.sh agents/qc_tester/entrypoint.sh
 
 log "Dockerfiles written for all agents."
 

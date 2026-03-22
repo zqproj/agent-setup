@@ -74,6 +74,13 @@ This means:
 - Claude Code can write session metrics freely within the container (discarded on exit)
 - Token usage tracking belongs in `agents/workspace/status.json` (persisted to disk)
 
+### Entrypoint Staging
+`entrypoint.sh` is written once to `agents/shared/` and then **copied into each agent's
+directory** by `setup.sh` at construction time. This is required because Docker's build
+context is scoped to each agent's own folder — `COPY ../shared/entrypoint.sh` would escape
+the context and fail at build time. Each agent folder therefore contains its own copy:
+`CLAUDE.md`, `Dockerfile`, and `entrypoint.sh`.
+
 ### Workspace Trust
 Claude Code prompts to trust each new workspace directory. Since containers run with
 `/home/agent` as their workspace, that path must be trusted in `~/.claude.json` on the
@@ -254,19 +261,19 @@ docker compose logs backend_dev
         │
         └── agents/                ← everything agent related
             ├── shared/
-            │   └── entrypoint.sh  ← copies credentials, launches claude
+            │   └── entrypoint.sh  ← source copy — staged into each agent at setup time
             ├── workspace/
             │   ├── tickets/       ← task assignments
             │   ├── reviews/       ← reviewer feedback
             │   ├── test_results/  ← QC results
             │   ├── status.json    ← project state + token usage
             │   └── project_brief.md ← your requirements (you create this)
-            ├── orchestrator/      ← CLAUDE.md + Dockerfile
-            ├── backend_dev/       ← CLAUDE.md + Dockerfile
-            ├── frontend_dev/      ← CLAUDE.md + Dockerfile
-            ├── infrastructure/    ← CLAUDE.md + Dockerfile
-            ├── reviewer/          ← CLAUDE.md + Dockerfile
-            └── qc_tester/         ← CLAUDE.md + Dockerfile
+            ├── orchestrator/      ← CLAUDE.md + Dockerfile + entrypoint.sh
+            ├── backend_dev/       ← CLAUDE.md + Dockerfile + entrypoint.sh
+            ├── frontend_dev/      ← CLAUDE.md + Dockerfile + entrypoint.sh
+            ├── infrastructure/    ← CLAUDE.md + Dockerfile + entrypoint.sh
+            ├── reviewer/          ← CLAUDE.md + Dockerfile + entrypoint.sh
+            └── qc_tester/         ← CLAUDE.md + Dockerfile + entrypoint.sh
 ```
 
 ---
