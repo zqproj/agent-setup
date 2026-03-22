@@ -143,7 +143,7 @@ if [ ! -d "$SPRINT_DIR" ]; then
     log "New sprint detected — creating sprint_${SPRINT_NUM}/"
     mkdir -p "$SPRINT_DIR"/{tickets,reviews,test_results}
     touch "$SPRINT_DIR/clarifications.md"
-    touch "$SPRINT_DIR/decisions.log"
+    touch "$SPRINT_DIR/decisions.md"
     cat > "$SPRINT_DIR/status.json" <<EOF
 {
   "project": "${PROJECT_NAME}",
