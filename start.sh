@@ -264,4 +264,4 @@ header "Starting ${AGENT:-orchestrator}"
 
 TARGET="${AGENT:-orchestrator}"
 log "Launching $TARGET for sprint_${SPRINT_NUM}..."
-docker compose --env-file "$ENV_FILE" run --rm "$TARGET"
+docker compose --env-file "$ENV_FILE" run --rm -it "$TARGET"
