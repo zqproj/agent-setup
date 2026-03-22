@@ -89,7 +89,7 @@ if [ ! -f "$HOME/.claude.json" ]; then
     fi
 fi
 
-# Ensure credentials are readable by current user (and container running as same UID)
+# Ensure credentials are readable by the container's non-root agent user
 chmod 644 "$HOME/.claude.json" 2>/dev/null || warn "Could not chmod ~/.claude.json"
 chmod -R 755 "$HOME/.claude" 2>/dev/null   || warn "Could not chmod ~/.claude"
 
@@ -123,12 +123,7 @@ cd "$REPO_DIR"
 # Copy .env into project folder for docker compose
 # -----------------------------------------------------------------------------
 cp "$ENV_FILE" .env
-
-# Append host UID/GID so containers run as same user as host
-echo "UID=$(id -u)" >> .env
-echo "GID=$(id -g)" >> .env
-
-log ".env copied into project with UID/GID ($(id -u):$(id -g))."
+log ".env copied into project."
 
 # -----------------------------------------------------------------------------
 # Create folder structure
@@ -464,7 +459,8 @@ services:
 
   orchestrator:
     build: ./agents/orchestrator
-    user: "\${UID}:\${GID}"
+    # No 'user:' override — Dockerfile sets USER agent (non-root).
+    # Credentials are readable via chmod 644 run during setup.
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
@@ -485,7 +481,7 @@ services:
 
   backend_dev:
     build: ./agents/backend_dev
-    user: "\${UID}:\${GID}"
+    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
@@ -508,7 +504,7 @@ services:
 
   frontend_dev:
     build: ./agents/frontend_dev
-    user: "\${UID}:\${GID}"
+    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
@@ -531,7 +527,7 @@ services:
 
   infrastructure:
     build: ./agents/infrastructure
-    user: "\${UID}:\${GID}"
+    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
@@ -554,7 +550,7 @@ services:
 
   reviewer:
     build: ./agents/reviewer
-    user: "\${UID}:\${GID}"
+    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace
@@ -577,7 +573,7 @@ services:
 
   qc_tester:
     build: ./agents/qc_tester
-    user: "\${UID}:\${GID}"
+    # No 'user:' override — Dockerfile sets USER agent (non-root).
     volumes:
       - ./proj:/home/agent/proj
       - ./agents/workspace:/home/agent/agents/workspace

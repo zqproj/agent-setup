@@ -69,9 +69,10 @@ sudo apt-get install -y git
 - Containers run as the same UID/GID as the host `sandbox` user — so file ownership matches automatically
 
 ### No Root
-- Each Dockerfile creates a non-root `agent` user
-- Docker Compose passes `user: "${UID}:${GID}"` so the container user matches the host user
+- Each Dockerfile creates a non-root `agent` user via `useradd`
+- Docker Compose does **not** override the user — the Dockerfile's `USER agent` is used
 - Claude Code requires non-root to use `--dangerously-skip-permissions`
+- `chmod 644 ~/.claude.json` and `chmod -R 755 ~/.claude` run at setup time so the `agent` user can read host credentials
 
 ---
 
@@ -247,7 +248,7 @@ These are automatically added to `.gitignore` by setup.sh:
 
 | Entry | Reason |
 |-------|--------|
-| `.env` | Contains PAT token and UID/GID |
+| `.env` | Contains PAT token |
 | `proj/.venv/` | Python virtual environment |
 | `proj/dist/` | Build output — regenerated |
 | `proj/.vscode/` | Editor settings |
